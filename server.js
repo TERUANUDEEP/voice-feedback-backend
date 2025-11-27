@@ -1,4 +1,3 @@
-// server.js
 require("dotenv").config();
 const express = require("express");
 const multer = require("multer");
@@ -8,14 +7,12 @@ const path = require("path");
 const cors = require("cors");
 
 const app = express();
-const PORT = process.env.PORT || 8080;   // ✅ FIXED
+const PORT = process.env.PORT || 8080;
 
-
-
-// CORS for frontend
+// CORS for your frontend (Netlify)
 app.use(cors({ origin: "*" }));
 
-// Make sure uploads folder exists (Render creates on runtime)
+// Create uploads folder if missing
 const uploadDir = path.join(__dirname, "uploads");
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
 
@@ -24,28 +21,29 @@ const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadDir),
   filename: (req, file, cb) => {
     const timestamp = Date.now();
-    const safeName = `${timestamp}-${file.originalname.replace(/\s+/g, "_")}`;
-    cb(null, safeName);
+    const safe = file.originalname.replace(/\s+/g, "_");
+    cb(null, `${timestamp}-${safe}`);
   }
 });
 
 const upload = multer({ storage });
 
-// Upload + Email endpoint
+
+// ⭐️ Upload + Email route
 app.post("/upload-audio", upload.single("voice"), async (req, res) => {
   try {
-    if (!req.file)
-      return res.status(400).json({
-        success: false,
-        message: "No file uploaded"
-      });
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: "No file uploaded" });
+    }
 
     const filePath = req.file.path;
-    const originalName = req.file.originalname;
+    const fileName = req.file.originalname;
 
-    // Nodemailer
+    // ⭐️ Correct Gmail SMTP transporter (WORKS IN RAILWAY)
     const transporter = nodemailer.createTransport({
-      service: "gmail",
+      host: "smtp.gmail.com",
+      port: 465,
+      secure: true,
       auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS
@@ -56,33 +54,32 @@ app.post("/upload-audio", upload.single("voice"), async (req, res) => {
       from: `"Voice Message" <${process.env.EMAIL_USER}>`,
       to: process.env.EMAIL_TO || process.env.EMAIL_USER,
       subject: "New Voice Message 🎤💖",
-      text: `A new voice message has arrived: ${originalName}`,
-      attachments: [{ filename: originalName, path: filePath }]
+      text: `A new voice message has arrived: ${fileName}`,
+      attachments: [
+        {
+          filename: fileName,
+          path: filePath
+        }
+      ]
     };
 
-    // Send email
+    // Send mail
     await transporter.sendMail(mailOptions);
 
-    // Send response immediately
-    res.status(200).json({ success: true, message: "Sent successfully 🎉" });
+    // Respond immediately
+    res.json({ success: true, message: "Sent successfully 🎉" });
 
-    // Delete file after sending
-    fs.unlink(filePath, (err) => {
-      if (err) console.error("File delete error:", err);
-    });
-
+    // Async file remove
+    fs.unlink(filePath, () => {});
   } catch (err) {
-    console.error("Error in /upload-audio:", err);
-    res.status(500).json({
-      success: false,
-      message: "Server error"
-    });
+    console.error("EMAIL ERROR:", err.message);
+    return res.status(500).json({ success: false, message: "Server error" });
   }
 });
 
-// Check server
+// Check server route
 app.get("/", (req, res) => {
-  res.send("Voice message server running ✔️");
+  res.send("Voice message backend is running ✔");
 });
 
 app.listen(PORT, () => {
