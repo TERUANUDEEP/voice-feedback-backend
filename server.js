@@ -8,7 +8,8 @@ const path = require("path");
 const cors = require("cors");
 
 const app = express();
-const PORT = process.env.PORT;
+const PORT = process.env.PORT || 8080;   // ✅ FIXED
+
 
 
 // CORS for frontend
