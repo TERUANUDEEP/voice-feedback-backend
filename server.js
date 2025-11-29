@@ -41,7 +41,7 @@ app.post("/upload-audio", upload.single("voice"), async (req, res) => {
     const base64File = fs.readFileSync(filePath).toString("base64");
 
     const emailPayload = {
-      sender: { name: "Voice Message", email: "teruanudeep987@gmail.com" },
+      sender: { name: "Voice Message", email: "teruanudeep789@gmail.com" },
       to: [{ email: process.env.EMAIL_TO }],
       subject: "New Voice Message 🎤💖",
       htmlContent: "<p>You received a new voice message!</p>",
