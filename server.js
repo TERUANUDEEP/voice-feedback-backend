@@ -1,6 +1,3 @@
-// Rebuild trigger
-
-
 require("dotenv").config();
 const express = require("express");
 const multer = require("multer");
@@ -30,48 +27,27 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 
-// ⭐ NEW — Brevo API Email Sender
+// ⭐ SEND WEBM FILE DIRECTLY (NO CONVERSION)
 app.post("/upload-audio", upload.single("voice"), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ success: false, message: "No file uploaded" });
     }
 
-    const inputPath = req.file.path;         // original .webm file
-    const outputPath = inputPath + ".mp3";   // output file
+    const filePath = req.file.path;
+    const fileName = req.file.originalname;
 
-    // Setup ffmpeg
-    const ffmpeg = require("fluent-ffmpeg");
-    const ffmpegPath = require("ffmpeg-static");
-    ffmpeg.setFfmpegPath(ffmpegPath);
+    // Convert audio to Base64
+    const base64File = fs.readFileSync(filePath).toString("base64");
 
-    // Convert WEBM → MP3
-    await new Promise((resolve, reject) => {
-      ffmpeg(inputPath)
-        .toFormat("mp3")
-        .on("end", resolve)
-        .on("error", reject)
-        .save(outputPath);
-    });
-
-    // Read converted file as Base64
-    const base64File = fs.readFileSync(outputPath).toString("base64");
-
-    // Replace .webm with .mp3 in filename
-    const fileName = req.file.originalname.replace(".webm", ".mp3");
-
-    // Email payload for Brevo
     const emailPayload = {
-      sender: {
-        name: "Voice Message",
-        email: process.env.EMAIL_TO   // Use your verified Gmail
-      },
-      to: [
-        { email: process.env.EMAIL_TO }
-      ],
+      sender: { name: "Voice Message", email: "no-reply@domain.com" },
+      to: [{ email: process.env.EMAIL_TO }],
       subject: "New Voice Message 🎤💖",
       htmlContent: "<p>You received a new voice message!</p>",
-      attachment: [
+      
+      // IMPORTANT — correct field name:
+      attachments: [
         {
           name: fileName,
           content: base64File
@@ -79,7 +55,6 @@ app.post("/upload-audio", upload.single("voice"), async (req, res) => {
       ]
     };
 
-    // Send using Brevo Email API
     await axios.post("https://api.brevo.com/v3/smtp/email", emailPayload, {
       headers: {
         "accept": "application/json",
@@ -88,22 +63,15 @@ app.post("/upload-audio", upload.single("voice"), async (req, res) => {
       }
     });
 
-    // Cleanup files
-    fs.unlinkSync(inputPath);
-    fs.unlinkSync(outputPath);
+    fs.unlinkSync(filePath);
 
     return res.json({ success: true, message: "Sent successfully 🎉" });
 
   } catch (error) {
     console.error("BREVO API ERROR:", error?.response?.data || error);
-    return res.status(500).json({
-      success: false,
-      message: "Email sending failed"
-    });
+    return res.status(500).json({ success: false, message: "Email sending failed" });
   }
 });
-
-
 
 // Health check
 app.get("/", (req, res) => {
