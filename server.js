@@ -34,16 +34,34 @@ app.post("/upload-audio", upload.single("voice"), async (req, res) => {
       return res.status(400).json({ success: false, message: "No file uploaded" });
     }
 
-    const filePath = req.file.path;
-    const fileName = req.file.originalname;
+    const inputPath = req.file.path;         // original .webm file
+    const outputPath = inputPath + ".mp3";   // output file
 
-    // Convert audio to Base64 (Brevo API needs this)
-    const base64File = fs.readFileSync(filePath).toString("base64");
+    // Setup ffmpeg
+    const ffmpeg = require("fluent-ffmpeg");
+    const ffmpegPath = require("ffmpeg-static");
+    ffmpeg.setFfmpegPath(ffmpegPath);
 
+    // Convert WEBM → MP3
+    await new Promise((resolve, reject) => {
+      ffmpeg(inputPath)
+        .toFormat("mp3")
+        .on("end", resolve)
+        .on("error", reject)
+        .save(outputPath);
+    });
+
+    // Read converted file as Base64
+    const base64File = fs.readFileSync(outputPath).toString("base64");
+
+    // Replace .webm with .mp3 in filename
+    const fileName = req.file.originalname.replace(".webm", ".mp3");
+
+    // Email payload for Brevo
     const emailPayload = {
       sender: {
         name: "Voice Message",
-        email: "no-reply@domain.com"
+        email: process.env.EMAIL_TO   // Use your verified Gmail
       },
       to: [
         { email: process.env.EMAIL_TO }
@@ -67,8 +85,9 @@ app.post("/upload-audio", upload.single("voice"), async (req, res) => {
       }
     });
 
-    // Delete file after sending
-    fs.unlinkSync(filePath);
+    // Cleanup files
+    fs.unlinkSync(inputPath);
+    fs.unlinkSync(outputPath);
 
     return res.json({ success: true, message: "Sent successfully 🎉" });
 
@@ -80,6 +99,7 @@ app.post("/upload-audio", upload.single("voice"), async (req, res) => {
     });
   }
 });
+
 
 
 // Health check
