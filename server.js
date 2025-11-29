@@ -5,67 +5,72 @@ const fs = require("fs");
 const path = require("path");
 const cors = require("cors");
 const axios = require("axios");
-const ffmpeg = require("fluent-ffmpeg");
-const ffmpegPath = require("ffmpeg-static");
-
-ffmpeg.setFfmpegPath(ffmpegPath);
+const cloudinary = require("cloudinary").v2;
 
 const app = express();
 const PORT = process.env.PORT || 8080;
 
 app.use(cors({ origin: "*" }));
 
-// uploads folder
+// ------------------ CLOUDINARY CONFIG ------------------
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+// ------------------ MULTER FILE STORAGE ------------------
 const uploadDir = path.join(__dirname, "uploads");
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
 
-// multer storage
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadDir),
   filename: (req, file, cb) => {
-    const ts = Date.now();
-    const safe = file.originalname.replace(/\s+/g, "_");
-    cb(null, `${ts}-${safe}`);
+    const timestamp = Date.now();
+    const safeName = file.originalname.replace(/\s+/g, "_");
+    cb(null, `${timestamp}-${safeName}`);
   }
 });
 const upload = multer({ storage });
 
-// ⭐ MAIN ROUTE — convert WEBM → MP3 → send
+
+// ------------------ MAIN AUDIO UPLOAD ROUTE ------------------
 app.post("/upload-audio", upload.single("voice"), async (req, res) => {
   try {
-    if (!req.file)
-      return res.status(400).json({ success: false, message: "No file" });
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: "No file uploaded" });
+    }
 
-    const inputPath = req.file.path;
-    const mp3Path = inputPath.replace(".webm", ".mp3");
+    const filePath = req.file.path;
 
-    // Convert to MP3
-    await new Promise((resolve, reject) => {
-      ffmpeg(inputPath)
-        .audioCodec("libmp3lame")
-        .toFormat("mp3")
-        .on("end", resolve)
-        .on("error", reject)
-        .save(mp3Path);
+    console.log("Uploading to Cloudinary...");
+
+    // Upload audio to Cloudinary
+    const cloudResult = await cloudinary.uploader.upload(filePath, {
+      resource_type: "video", // IMPORTANT for audio formats like webm/mp3
+      folder: "voice_messages",
     });
 
-    // Read MP3 as base64
-    const base64File = fs.readFileSync(mp3Path).toString("base64");
+    // Cloudinary gives us URL
+    const audioUrl = cloudResult.secure_url;
 
+    console.log("Cloudinary upload success:", audioUrl);
+
+    // Delete local file
+    fs.unlinkSync(filePath);
+
+    // Prepare email payload for Brevo
     const emailPayload = {
-      sender: { name: "Voice Message", email: "no-reply@yourdomain.com" },
+      sender: { name: "Voice Message", email: "teruanudeep789@gmail.com" },
       to: [{ email: process.env.EMAIL_TO }],
       subject: "New Voice Message 🎤💖",
-      htmlContent: "<p>You received a new voice message!</p>",
-      attachments: [
-        {
-          name: "voice-message.mp3",
-          content: base64File,
-          type: "audio/mp3"
-        }
-      ]
+      htmlContent: `
+        <p>You received a new voice message 🎤💖</p>
+        <p><a href="${audioUrl}" target="_blank">Click here to listen</a></p>
+      `
     };
 
+    // Send email via Brevo
     await axios.post("https://api.brevo.com/v3/smtp/email", emailPayload, {
       headers: {
         "accept": "application/json",
@@ -74,19 +79,20 @@ app.post("/upload-audio", upload.single("voice"), async (req, res) => {
       }
     });
 
-    // cleanup
-    fs.unlinkSync(inputPath);
-    fs.unlinkSync(mp3Path);
+    return res.json({ success: true, message: "Sent successfully 🎉" });
 
-    res.json({ success: true, message: "Sent successfully 🎉" });
-
-  } catch (err) {
-    console.error("EMAIL ERROR:", err?.response?.data || err);
-    res.status(500).json({ success: false, message: "Sending failed" });
+  } catch (error) {
+    console.error("ERROR:", error?.response?.data || error);
+    return res.status(500).json({ success: false, message: "Email sending failed" });
   }
 });
 
-// health check
-app.get("/", (req, res) => res.send("Backend running ✔"));
 
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+// ------------------ HEALTH CHECK ------------------
+app.get("/", (req, res) => {
+  res.send("Voice message backend running ✔");
+});
+
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
