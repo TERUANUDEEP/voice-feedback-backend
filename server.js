@@ -47,13 +47,14 @@ app.post("/upload-audio", upload.single("voice"), async (req, res) => {
       htmlContent: "<p>You received a new voice message!</p>",
       
       // IMPORTANT — correct field name:
-      attachments: [
+     attachments: [
   {
     name: fileName,
     content: base64File,
-    type: "audio/webm"
+    type: "application/octet-stream"
   }
 ]
+
 
     };
 
