@@ -1,35 +1,33 @@
 require("dotenv").config();
 const express = require("express");
 const multer = require("multer");
-const nodemailer = require("nodemailer");
 const fs = require("fs");
 const path = require("path");
 const cors = require("cors");
+const axios = require("axios");
 
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// CORS for your frontend (Netlify)
 app.use(cors({ origin: "*" }));
 
 // Create uploads folder if missing
 const uploadDir = path.join(__dirname, "uploads");
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
 
-// Multer storage
+// Multer config
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadDir),
   filename: (req, file, cb) => {
     const timestamp = Date.now();
-    const safe = file.originalname.replace(/\s+/g, "_");
-    cb(null, `${timestamp}-${safe}`);
+    const safeName = file.originalname.replace(/\s+/g, "_");
+    cb(null, `${timestamp}-${safeName}`);
   }
 });
-
 const upload = multer({ storage });
 
 
-// ⭐️ Upload + Email route
+// ⭐ NEW — Brevo API Email Sender
 app.post("/upload-audio", upload.single("voice"), async (req, res) => {
   try {
     if (!req.file) {
@@ -39,47 +37,54 @@ app.post("/upload-audio", upload.single("voice"), async (req, res) => {
     const filePath = req.file.path;
     const fileName = req.file.originalname;
 
-    // ⭐️ Correct Gmail SMTP transporter (WORKS IN RAILWAY)
-    const transporter = nodemailer.createTransport({
-      host: "smtp.gmail.com",
-      port: 465,
-      secure: true,
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS
-      }
-    });
+    // Convert audio to Base64 (Brevo API needs this)
+    const base64File = fs.readFileSync(filePath).toString("base64");
 
-    const mailOptions = {
-      from: `"Voice Message" <${process.env.EMAIL_USER}>`,
-      to: process.env.EMAIL_TO || process.env.EMAIL_USER,
+    const emailPayload = {
+      sender: {
+        name: "Voice Message",
+        email: "no-reply@domain.com"
+      },
+      to: [
+        { email: process.env.EMAIL_TO }
+      ],
       subject: "New Voice Message 🎤💖",
-      text: `A new voice message has arrived: ${fileName}`,
-      attachments: [
+      htmlContent: "<p>You received a new voice message!</p>",
+      attachment: [
         {
-          filename: fileName,
-          path: filePath
+          name: fileName,
+          content: base64File
         }
       ]
     };
 
-    // Send mail
-    await transporter.sendMail(mailOptions);
+    // Send using Brevo Email API
+    await axios.post("https://api.brevo.com/v3/smtp/email", emailPayload, {
+      headers: {
+        "accept": "application/json",
+        "content-type": "application/json",
+        "api-key": process.env.BREVO_API_KEY
+      }
+    });
 
-    // Respond immediately
-    res.json({ success: true, message: "Sent successfully 🎉" });
+    // Delete file after sending
+    fs.unlinkSync(filePath);
 
-    // Async file remove
-    fs.unlink(filePath, () => {});
-  } catch (err) {
-    console.error("EMAIL ERROR:", err.message);
-    return res.status(500).json({ success: false, message: "Server error" });
+    return res.json({ success: true, message: "Sent successfully 🎉" });
+
+  } catch (error) {
+    console.error("BREVO API ERROR:", error?.response?.data || error);
+    return res.status(500).json({
+      success: false,
+      message: "Email sending failed"
+    });
   }
 });
 
-// Check server route
+
+// Health check
 app.get("/", (req, res) => {
-  res.send("Voice message backend is running ✔");
+  res.send("Voice message backend (Brevo API) running ✔");
 });
 
 app.listen(PORT, () => {
