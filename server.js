@@ -47,13 +47,14 @@ app.post("/upload-audio", upload.single("voice"), async (req, res) => {
       htmlContent: "<p>You received a new voice message!</p>",
       
       // IMPORTANT — correct field name:
-      attachment: [
-        {
-          name: fileName,
-          content: base64File,
-          mimeType: "audio/webm"
-        }
-      ]
+      attachments: [
+  {
+    name: fileName,
+    content: base64File,
+    type: "audio/webm"
+  }
+]
+
     };
 
     await axios.post("https://api.brevo.com/v3/smtp/email", emailPayload, {
