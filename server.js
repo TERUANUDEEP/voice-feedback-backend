@@ -5,6 +5,10 @@ const fs = require("fs");
 const path = require("path");
 const cors = require("cors");
 const axios = require("axios");
+const ffmpeg = require("fluent-ffmpeg");
+const ffmpegPath = require("ffmpeg-static");
+
+ffmpeg.setFfmpegPath(ffmpegPath);
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -26,34 +30,40 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-
-// ⭐ SEND WEBM FILE DIRECTLY (NO CONVERSION)
+// ⭐ Convert WEBM → MP3 + send email
 app.post("/upload-audio", upload.single("voice"), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ success: false, message: "No file uploaded" });
     }
 
-    const filePath = req.file.path;
-    const fileName = req.file.originalname;
+    const webmPath = req.file.path;
+    const mp3Path = webmPath.replace(".webm", ".mp3");
 
-    // Convert audio to Base64
-    const base64File = fs.readFileSync(filePath).toString("base64");
+    // Convert to MP3
+    await new Promise((resolve, reject) => {
+      ffmpeg(webmPath)
+        .toFormat("mp3")
+        .on("end", resolve)
+        .on("error", reject)
+        .save(mp3Path);
+    });
+
+    // Convert MP3 to Base64
+    const base64File = fs.readFileSync(mp3Path).toString("base64");
 
     const emailPayload = {
       sender: { name: "Voice Message", email: "teruanudeep789@gmail.com" },
       to: [{ email: process.env.EMAIL_TO }],
       subject: "New Voice Message 🎤💖",
       htmlContent: "<p>You received a new voice message!</p>",
-      
-      // IMPORTANT — correct field name:
-    attachments: [
-  {
-    name: fileName,
-    content: base64File,
-    contentType: "audio/webm"
-  }
-]
+      attachments: [
+        {
+          name: "voice-message.mp3",
+          content: base64File,
+          type: "audio/mp3"
+        }
+      ]
     };
 
     await axios.post("https://api.brevo.com/v3/smtp/email", emailPayload, {
@@ -64,7 +74,9 @@ app.post("/upload-audio", upload.single("voice"), async (req, res) => {
       }
     });
 
-    fs.unlinkSync(filePath);
+    // cleanup
+    fs.unlinkSync(webmPath);
+    fs.unlinkSync(mp3Path);
 
     return res.json({ success: true, message: "Sent successfully 🎉" });
 
