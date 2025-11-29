@@ -50,7 +50,8 @@ app.post("/upload-audio", upload.single("voice"), async (req, res) => {
       attachments: [
         {
           name: fileName,
-          content: base64File
+          content: base64File,
+          type: "audio/webm"
         }
       ]
     };
