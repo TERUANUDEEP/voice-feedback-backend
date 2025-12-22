@@ -31,8 +31,8 @@ const storage = multer.diskStorage({
     cb(null, `${timestamp}-${safeName}`);
   }
 });
-const upload = multer({ storage });
 
+const upload = multer({ storage });
 
 // ------------------ MAIN AUDIO UPLOAD ROUTE ------------------
 app.post("/upload-audio", upload.single("voice"), async (req, res) => {
@@ -42,42 +42,67 @@ app.post("/upload-audio", upload.single("voice"), async (req, res) => {
     }
 
     const filePath = req.file.path;
-
     console.log("Uploading to Cloudinary...");
 
     // Upload audio to Cloudinary
     const cloudResult = await cloudinary.uploader.upload(filePath, {
-      resource_type: "video", // IMPORTANT for audio formats like webm/mp3
+      resource_type: "video",
       folder: "voice_messages",
     });
 
-    // Cloudinary gives us URL
     const audioUrl = cloudResult.secure_url;
-
     console.log("Cloudinary upload success:", audioUrl);
 
     // Delete local file
     fs.unlinkSync(filePath);
 
-    // Prepare email payload for Brevo
+    // ------------------ EMAIL PAYLOAD (FIXED) ------------------
     const emailPayload = {
-      sender: { name: "Voice Message", email: "teruanudeep789@gmail.com" },
-      to: [{ email: process.env.EMAIL_TO }],
+      sender: {
+        name: "Voice Message",
+        email: "teruanudeep789@gmail.com"
+      },
+      to: [
+        { email: process.env.EMAIL_TO }
+      ],
       subject: "New Voice Message 🎤💖",
       htmlContent: `
-        <p>You received a new voice message 🎤💖</p>
-        <p><a href="${audioUrl}" target="_blank">Click here to listen</a></p>
+        <div style="font-family: Arial, sans-serif; font-size:14px; color:#333;">
+          <p>Hello 👋,</p>
+
+          <p>You have received a new voice message from your birthday website 🎂💖.</p>
+
+          <p>Please click the link below to listen:</p>
+
+          <p>
+            <a href="${audioUrl}" target="_blank">
+              ${audioUrl}
+            </a>
+          </p>
+
+          <p>If the link does not open directly, please copy and paste it into your browser.</p>
+
+          <br/>
+
+          <p>— Voice Message System 🎤</p>
+        </div>
       `
     };
 
     // Send email via Brevo
-    await axios.post("https://api.brevo.com/v3/smtp/email", emailPayload, {
-      headers: {
-        "accept": "application/json",
-        "content-type": "application/json",
-        "api-key": process.env.BREVO_API_KEY
+    const brevoRes = await axios.post(
+      "https://api.brevo.com/v3/smtp/email",
+      emailPayload,
+      {
+        headers: {
+          accept: "application/json",
+          "content-type": "application/json",
+          "api-key": process.env.BREVO_API_KEY,
+        },
       }
-    });
+    );
+
+    console.log("Brevo response:", brevoRes.data);
 
     return res.json({ success: true, message: "Sent successfully 🎉" });
 
@@ -86,7 +111,6 @@ app.post("/upload-audio", upload.single("voice"), async (req, res) => {
     return res.status(500).json({ success: false, message: "Email sending failed" });
   }
 });
-
 
 // ------------------ HEALTH CHECK ------------------
 app.get("/", (req, res) => {
