@@ -1,4 +1,6 @@
 require("dotenv").config();
+// console.log("Email:", process.env.EMAIL_TO);
+// console.log("BREVO:", process.env.BREVO_API_KEY);
 const express = require("express");
 const multer = require("multer");
 const fs = require("fs");
@@ -8,8 +10,7 @@ const axios = require("axios");
 const cloudinary = require("cloudinary").v2;
 
 const app = express();
-const PORT = process.env.PORT || 8080;
-
+const PORT = process.env.PORT || 5001;
 app.use(cors({ origin: "*" }));
 
 // ------------------ CLOUDINARY CONFIG ------------------
@@ -33,6 +34,12 @@ const storage = multer.diskStorage({
 });
 
 const upload = multer({ storage });
+app.use(
+  cors({
+    origin: "*",
+    methods: ["GET", "POST"],
+  })
+);
 
 // ------------------ MAIN AUDIO UPLOAD ROUTE ------------------
 app.post("/upload-audio", upload.single("voice"), async (req, res) => {
@@ -74,13 +81,17 @@ app.post("/upload-audio", upload.single("voice"), async (req, res) => {
 
           <p>Please click the link below to listen:</p>
 
-          <p>
-            <a href="${audioUrl}" target="_blank">
-              ${audioUrl}
-            </a>
-          </p>
+         <p>Listen here:</p>
 
-          <p>If the link does not open directly, please copy and paste it into your browser.</p>
+<audio controls>
+  <source src="${audioUrl}" type="audio/webm">
+</audio>
+
+<p>
+  <a href="${audioUrl}" target="_blank">
+    Open Audio
+  </a>
+</p>If the link does not open directly, please copy and paste it into your browser.</p>
 
           <br/>
 
